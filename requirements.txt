@@ -1,0 +1,3 @@
+# Input handling and the rule-based analysis use only the Python standard library.
+# The machine-learning component needs:
+scikit-learn>=1.3
