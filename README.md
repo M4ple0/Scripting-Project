@@ -31,7 +31,13 @@ python -m unittest discover -s tests -t .
 ```
 
 Useful flags: `--language` (force the language), `--fail-on high` (exit status 1 if something at
-or above that severity is found - handy for CI), `--format json`.
+or above that severity is found - handy for CI), `--format json`, `--output report.txt` (write the
+report to a file), `--max-kb 500` (skip larger files; the default can also be set with the
+`SECREVIEW_MAX_BYTES` environment variable). Before the command, `--version` shows the version and
+Python version and `--verbose` prints the environment (Python, platform, working directory).
+
+Every text report ends with a **risk score** (findings weighted by severity: info 0, low 1,
+medium 3, high 7, critical 10) and the average per input.
 
 ## How it is laid out
 
@@ -51,12 +57,29 @@ rules/
   weak_crypto.py        MD5/SHA-1, DES/RC4/ECB, predictable randomness, old TLS
   insecure_config.py    debug mode, disabled TLS checks, wildcard CORS, loose permissions
   error_handling.py     bare/empty except, no timeouts, unchecked malloc, assert as a check
+  ast_analysis.py       Python only: parses the code into a syntax tree and follows untrusted input
+                        (input(), sys.argv, os.environ, Flask request data, route parameters) into
+                        dangerous calls (shell, eval, SQL, file paths, pickle/yaml, URLs, templates)
 ml/
   seed_data.py          starter dataset (120 hand-written snippets) + augmentation
   train.py, predict.py, model.py
 samples/                deliberately vulnerable demo files and one safe file
 tests/                  unittest suite
 ```
+
+### How the AST analysis works
+
+`rules/ast_analysis.py` parses a Python file with the `ast` module and walks the tree in order.
+It keeps a table of which variables hold **untrusted data** (a "taint") and follows that data through
+assignments, f-strings, concatenation, `.format()`, loops, tuple unpacking and string methods.
+`int()`, `float()`, `shlex.quote()`, `html.escape()` and similar calls clear the taint. A finding
+is reported only when tainted data really reaches a dangerous call, and its message shows the flow,
+for example `sys.argv (line 36) -> subprocess.run(shell=True)`.
+
+It also summarises each function you define, so data passed to a helper that sends its argument
+to a dangerous call (or returns it) is followed across function calls. Import aliases such as
+`import subprocess as sp` are resolved, statements split over several lines are handled, and
+`# nosec` still silences a line. Anything that does not parse as Python is skipped quietly.
 
 ### Adding a rule
 
@@ -74,9 +97,12 @@ versions against a vulnerability database such as OSV - which is a good Phase 3 
 
 ## Limitations (read before trusting the output)
 
-* Rules work **one line at a time**. A statement split over several lines can be missed, and data flow
-  is not tracked, so `os.system(cmd)` is flagged even if `cmd` is safe. Expect some false positives
-  and misses; this is a first layer, not a verdict.
+* The regex rules work **one line at a time**. A statement split over several lines can be missed, and
+  data flow is not tracked, so `os.system(cmd)` is flagged even if `cmd` is safe. The AST analysis
+  fixes this for Python (it only reports real flows), but the regex rules still run beside it, so
+  expect some false positives and misses; this is a first layer, not a verdict.
+* The AST analysis is Python only, works one file at a time, ignores values stored on `self`,
+  and treats ordinary function parameters as trusted (only route parameters count as untrusted).
 * **The ML model is a pipeline demo, not a trustworthy detector yet.** It is trained on ~120 short
   snippets (about 330 after renaming variables). Cross-validation that keeps copies of the same snippet
   together scores around chance (accuracy ~0.5), meaning it does not yet generalise to code constructs it has

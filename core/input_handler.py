@@ -31,7 +31,8 @@ EXTENSION_LANGUAGES = {
 SKIP_DIRS = {
     "node_modules", "__pycache__", "venv", "env", "dist", "build", "site-packages",
 }
-MAX_FILE_BYTES = 1_000_000
+DEFAULT_MAX_FILE_BYTES = 1_000_000
+MAX_BYTES_ENV_VAR = "SECREVIEW_MAX_BYTES"
 PASTE_END_MARKER = "END"
 
 
@@ -39,6 +40,18 @@ PASTE_END_MARKER = "END"
 class LoadResult:
     inputs: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
+
+
+def configured_max_bytes() -> int:
+    raw = os.environ.get(MAX_BYTES_ENV_VAR, "")
+    try:
+        limit = int(raw)
+    except ValueError:
+        return DEFAULT_MAX_FILE_BYTES
+    return limit if limit > 0 else DEFAULT_MAX_FILE_BYTES
+
+
+MAX_FILE_BYTES = configured_max_bytes()
 
 
 def normalise_text(text: str) -> str:
@@ -83,11 +96,12 @@ def from_text(text: str, name: str = "<snippet>", language: str | None = None) -
 
 
 def read_file(path, result: LoadResult, language: str | None = None,
-              max_bytes: int = MAX_FILE_BYTES) -> None:
+              max_bytes: int | None = None) -> None:
     """Read one file into ``result``; any problem becomes a warning."""
     path = Path(path)
+    max_bytes = max_bytes or MAX_FILE_BYTES
     try:
-        size = path.stat().st_size
+        size = os.path.getsize(path)
     except OSError as exc:
         result.warnings.append(f"{path}: cannot read ({exc.strerror or exc})")
         return
@@ -114,14 +128,15 @@ def read_file(path, result: LoadResult, language: str | None = None,
     result.inputs.append(from_text(text, name=str(path), language=language))
 
 
-def walk_directory(root, result: LoadResult, language: str | None = None) -> None:
+def walk_directory(root, result: LoadResult, language: str | None = None,
+                   max_bytes: int | None = None) -> None:
     """Read every supported source file below ``root`` (sorted, so output is stable)."""
     found = 0
     for current, dirs, files in os.walk(root):
         dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and not d.startswith("."))
         for name in sorted(files):
             if Path(name).suffix.lower() in EXTENSION_LANGUAGES:
-                read_file(Path(current) / name, result, language)
+                read_file(Path(current) / name, result, language, max_bytes)
                 found += 1
     if found == 0:
         result.warnings.append(f"{root}: no supported source files found")
@@ -158,14 +173,13 @@ def read_paste(result: LoadResult, language: str | None = None) -> None:
 
 
 def load_inputs(paths=(), use_stdin: bool = False, paste: bool = False,
-                language: str | None = None) -> LoadResult:
+                language: str | None = None, max_bytes: int | None = None) -> LoadResult:
     result = LoadResult()
     for item in paths:
-        path = Path(item)
-        if path.is_dir():
-            walk_directory(path, result, language)
-        elif path.is_file():
-            read_file(path, result, language)
+        if os.path.isdir(item):
+            walk_directory(item, result, language, max_bytes)
+        elif os.path.isfile(item):
+            read_file(item, result, language, max_bytes)
         else:
             result.warnings.append(f"{item}: no such file or directory")
     if use_stdin:

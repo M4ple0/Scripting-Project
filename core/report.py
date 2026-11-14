@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from .models import SEVERITIES, Finding
+from .models import SEVERITIES, SEVERITY_WEIGHTS, Finding
 
 _COLORS = {
     "critical": "\033[1;31m",
@@ -20,6 +20,10 @@ def summarize(findings: list[Finding]) -> dict:
     for finding in findings:
         counts[finding.severity] += 1
     return counts
+
+
+def risk_score(findings: list[Finding]) -> int:
+    return int(sum(SEVERITY_WEIGHTS[finding.severity] for finding in findings))
 
 
 def format_text(findings: list[Finding], files_scanned: int, color: bool = False) -> str:
@@ -46,6 +50,9 @@ def format_text(findings: list[Finding], files_scanned: int, color: bool = False
     parts = [f"{counts[s]} {s}" for s in reversed(SEVERITIES) if counts[s]]
     detail = ", ".join(parts) if parts else "no findings"
     out.append(f"Scanned {files_scanned} input(s): {len(findings)} finding(s) ({detail})")
+    score = risk_score(findings)
+    average = float(score) / max(files_scanned, 1)
+    out.append(f"Risk score: {str(score)} ({average:.1f} per input)")
     return "\n".join(out)
 
 
@@ -54,6 +61,7 @@ def format_json(findings: list[Finding], files_scanned: int) -> str:
         {
             "files_scanned": files_scanned,
             "summary": summarize(findings),
+            "risk_score": risk_score(findings),
             "findings": [f.to_dict() for f in findings],
         },
         indent=2,

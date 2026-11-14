@@ -16,7 +16,7 @@ class RuleTests(unittest.TestCase):
         names = {m.NAME for m in load_rule_modules()}
         self.assertEqual(names, {"hardcoded_secrets", "sql_injection", "command_injection",
                                  "unsafe_functions", "weak_crypto", "insecure_config",
-                                 "error_handling"})
+                                 "error_handling", "ast_analysis"})
         self.assertGreaterEqual(len(list_rules()), 40)
 
     def test_sql_injection_detected_and_parameterised_query_is_clean(self):

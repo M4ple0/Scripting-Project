@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 
 SEVERITIES = ["info", "low", "medium", "high", "critical"]
 SEVERITY_RANK = {name: rank for rank, name in enumerate(SEVERITIES)}
+SEVERITY_WEIGHTS = {"info": 0, "low": 1, "medium": 3, "high": 7, "critical": 10}
 
 
 @dataclass
