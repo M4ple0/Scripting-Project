@@ -7,11 +7,13 @@ from rules.engine import analyze, list_rules, load_rule_modules
 SAMPLES = Path(__file__).resolve().parent.parent / "samples"
 
 
+# Helper: run the analyzer on a snippet and keep just the set of rule ids it fires.
 def ids(text, language):
     return {f.rule_id for f in analyze(from_text(text, language=language))}
 
 
 class RuleTests(unittest.TestCase):
+    # Every rule script file is found by the loader and the rules list is populated.
     def test_every_rule_script_is_discovered(self):
         names = {m.NAME for m in load_rule_modules()}
         self.assertEqual(names, {"hardcoded_secrets", "sql_injection", "command_injection",
@@ -19,33 +21,39 @@ class RuleTests(unittest.TestCase):
                                  "error_handling", "ast_analysis"})
         self.assertGreaterEqual(len(list_rules()), 40)
 
+    # Input: two insecure SQL queries trigger findings, while a parameterised query stays clean.
     def test_sql_injection_detected_and_parameterised_query_is_clean(self):
         self.assertIn("SQL001", ids('cursor.execute(f"SELECT * FROM u WHERE id = {uid}")', "python"))
         self.assertIn("SQL002", ids('q = "SELECT * FROM u WHERE n = \'" + name + "\'"', "python"))
         self.assertEqual(ids('cursor.execute("SELECT * FROM u WHERE id = %s", (uid,))', "python"), set())
 
+    # Input: shell commands built from strings are flagged, but fixed or list-form commands are not.
     def test_command_injection(self):
         self.assertIn("CMD002", ids('subprocess.call("ls " + d, shell=True)', "python"))
         self.assertIn("CMD001", ids('os.system("ping " + host)', "python"))
         self.assertEqual(ids('os.system("clear")', "python"), set())
         self.assertEqual(ids('subprocess.run(["ls", d])', "python"), set())
 
+    # Input: a hard-coded password and an AWS key id are secrets, but env lookups and placeholders are fine.
     def test_secrets(self):
         self.assertIn("SEC001", ids('password = "Sup3rS3cret!"', "python"))
         self.assertEqual(ids('password = os.environ["PW"]', "python"), set())
         self.assertEqual(ids('password = "changeme"', "python"), set())
         self.assertIn("SEC003", ids('key = "AKIAIOSFODNN7EXAMPLE"', "python"))
 
+    # Input: weak hashing and ECB mode are flagged, while SHA-256 is treated as safe.
     def test_weak_crypto(self):
         self.assertIn("CRY001", ids("h = hashlib.md5(x).hexdigest()", "python"))
         self.assertIn("CRY002", ids("c = AES.new(k, AES.MODE_ECB)", "python"))
         self.assertEqual(ids("h = hashlib.sha256(x).hexdigest()", "python"), set())
 
+    # Input: banned C functions like gets and strcpy are found, and a bounds-checked snprintf is clean.
     def test_c_banned_functions(self):
         found = ids("gets(buf);\nstrcpy(a, b);\nprintf(user);", "c")
         self.assertTrue({"UNS005", "UNS006", "UNS008"} <= found)
         self.assertEqual(ids('snprintf(buf, sizeof(buf), "%s", x);', "c"), set())
 
+    # Input: bare except, swallowed exceptions, unchecked malloc and missing timeouts are flagged; their safe counterparts are not.
     def test_error_handling(self):
         self.assertIn("ERR001", ids("try:\n    f()\nexcept:\n    log()", "python"))
         self.assertIn("ERR002", ids("try:\n    f()\nexcept ValueError:\n    pass", "python"))
@@ -54,10 +62,12 @@ class RuleTests(unittest.TestCase):
         self.assertIn("ERR004", ids("r = requests.get(url)", "python"))
         self.assertEqual(ids("r = requests.get(url, timeout=5)", "python"), set())
 
+    # A risky call inside a comment, and one marked with a # nosec suppression, produce no findings.
     def test_comments_and_suppression_are_ignored(self):
         self.assertEqual(ids("# eval(x)", "python"), set())
         self.assertEqual(ids('os.system("ping " + h)  # nosec', "python"), set())
 
+    # Python-only rules must not fire on code the analyzer was told is C.
     def test_language_specific_rules_do_not_leak_across_languages(self):
         self.assertEqual(ids("eval(x)", "c"), set())
 
@@ -67,11 +77,13 @@ class RuleTests(unittest.TestCase):
         found = {f.rule_id for f in analyze(from_text("eval(x)", language="unknown"))}
         self.assertTrue(found & {"UNS001", "UNS002", "UNS011"})
 
+    # A duplicated finding on one line collapses to a single entry, and it is rated critical.
     def test_one_finding_per_line_and_weakness(self):
         findings = analyze(from_text('API_KEY = "sk_live_FAKEFAKEFAKEFAKEFAKE1234"', language="python"))
         self.assertEqual(len(findings), 1)
         self.assertEqual(findings[0].severity, "critical")
 
+    # Setup loads each sample file; assertions require plenty of findings in the bad ones and zero in the safe one.
     def test_vulnerable_samples_are_flagged_and_safe_sample_is_clean(self):
         bad = analyze(load_inputs([SAMPLES / "vulnerable_app.py"]).inputs[0])
         self.assertGreaterEqual(len(bad), 15)

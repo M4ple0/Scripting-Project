@@ -116,6 +116,8 @@ def cmd_rules(args) -> int:
     inputs = gather(args)
     if inputs is None:
         return 2
+    # --min-severity filters the findings first; --fail-on is checked afterwards
+    # against only the findings that survived that filter
     findings = [f for f in analyze_many(inputs)
                 if SEVERITY_RANK[f.severity] >= SEVERITY_RANK[args.min_severity]]
     if args.format == "json":
@@ -131,6 +133,7 @@ def cmd_rules(args) -> int:
 
 
 def cmd_train(args) -> int:
+    # ML imports deferred so the rules/read commands work without scikit-learn installed
     try:
         from ml.train import train
     except ImportError as exc:
@@ -168,6 +171,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--verbose", action="store_true",
                         help="print environment details to stderr (give this before the command)")
     sub = parser.add_subparsers(dest="command", required=True)
+    # each subparser stores its handler in args.func; main() dispatches on it
 
     read = sub.add_parser("read", help="step 1: take input and show how it was parsed")
     add_input_args(read)

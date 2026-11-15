@@ -5,6 +5,7 @@ import json
 
 from .models import SEVERITIES, SEVERITY_WEIGHTS, Finding
 
+# ANSI escape codes that color terminal text by severity.
 _COLORS = {
     "critical": "\033[1;31m",
     "high": "\033[31m",
@@ -12,9 +13,11 @@ _COLORS = {
     "low": "\033[36m",
     "info": "\033[2m",
 }
+# ANSI code that turns terminal coloring back off.
 _RESET = "\033[0m"
 
 
+# Count findings per severity, e.g. {"high": 2, "info": 1}.
 def summarize(findings: list[Finding]) -> dict:
     counts = {severity: 0 for severity in SEVERITIES}
     for finding in findings:
@@ -26,11 +29,14 @@ def risk_score(findings: list[Finding]) -> int:
     return int(sum(SEVERITY_WEIGHTS[finding.severity] for finding in findings))
 
 
+# Build the plain-text report a person reads in the terminal.
 def format_text(findings: list[Finding], files_scanned: int, color: bool = False) -> str:
+    # Wrap text in its severity color, or leave it plain if color is off.
     def paint(text: str, severity: str) -> str:
         return f"{_COLORS[severity]}{text}{_RESET}" if color else text
 
     out: list[str] = []
+    # group findings under their file so the report reads as a file-by-file review
     by_file: dict[str, list[Finding]] = {}
     for finding in findings:
         by_file.setdefault(finding.file, []).append(finding)
@@ -47,6 +53,7 @@ def format_text(findings: list[Finding], files_scanned: int, color: bool = False
         out.append("")
 
     counts = summarize(findings)
+    # descending severity order so critical counts lead the summary line
     parts = [f"{counts[s]} {s}" for s in reversed(SEVERITIES) if counts[s]]
     detail = ", ".join(parts) if parts else "no findings"
     out.append(f"Scanned {files_scanned} input(s): {len(findings)} finding(s) ({detail})")
@@ -56,6 +63,7 @@ def format_text(findings: list[Finding], files_scanned: int, color: bool = False
     return "\n".join(out)
 
 
+# Build the machine-readable JSON report for other programs to consume.
 def format_json(findings: list[Finding], files_scanned: int) -> str:
     return json.dumps(
         {

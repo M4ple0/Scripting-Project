@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+# Starter examples of insecure code, grouped by language (SQL injection, eval, weak crypto...).
 INSECURE = [
     ("python", r'''
 query = "SELECT * FROM users WHERE name = '" + name + "'"
@@ -195,6 +196,7 @@ $hash = md5($_POST['password']);
 '''),
 ]
 
+# Secure-labeled starter snippets across several languages.
 SECURE = [
     # ---- Python ----
     ("python", r'''
@@ -429,6 +431,7 @@ $hash = password_hash($password, PASSWORD_DEFAULT);
 '''),
 ]
 
+# Combine both lists into training rows of (language, label, code) with label 1 = insecure.
 SAMPLES = ([(lang, 1, code.strip("\n")) for lang, code in INSECURE]
            + [(lang, 0, code.strip("\n")) for lang, code in SECURE])
 
@@ -457,6 +460,7 @@ _RENAMES = {
 }
 
 
+# Expand each seed snippet into renamed copies so the model sees more variety.
 def augment(variants: int = 4, seed: int = 7):
     """Return (code, label, group) rows: each seed snippet plus renamed copies.
 
@@ -468,19 +472,26 @@ def augment(variants: int = 4, seed: int = 7):
 
     rng = random.Random(seed)
     rows = []
+    # Data augmentation: keep the original, then add renamed copies tagged with the same group id.
     for group, (_, label, code) in enumerate(SAMPLES):
         rows.append((code, label, group))
+        # Only snippets containing renameable words can produce variants at all.
         present = [word for word in _RENAMES if re.search(rf"\b{word}\b", code)]
+        # Create up to `variants` copies, randomly renaming some words in each.
         for _ in range(variants if present else 0):
+            # Each present name has a 70% chance of being selected for renaming.
             mapping = {w: rng.choice(_RENAMES[w]) for w in present if rng.random() < 0.7}
             variant = code
+            # Apply word-boundary renames so only whole identifiers change, not substrings.
             for old, new in mapping.items():
                 variant = re.sub(rf"\b{old}\b", new, variant)
+            # Skip variants that are unchanged from the original.
             if variant != code:
                 rows.append((variant, label, group))
     return rows
 
 
+# Export the raw seed samples to a CSV file (language, label, code columns).
 def write_csv(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="", encoding="utf-8") as handle:
@@ -489,6 +500,7 @@ def write_csv(path: Path) -> None:
         writer.writerows(SAMPLES)
 
 
+# Running this file directly regenerates the seed dataset CSV next to this module.
 if __name__ == "__main__":
     target = Path(__file__).with_name("data") / "seed_dataset.csv"
     write_csv(target)

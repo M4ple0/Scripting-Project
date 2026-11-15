@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+# Setup: remember whether sklearn exists so the whole class can be skipped without it.
 try:
     import sklearn  # noqa: F401
     HAVE_SKLEARN = True
@@ -18,6 +19,7 @@ from core.input_handler import from_text
 
 @unittest.skipUnless(HAVE_SKLEARN, "scikit-learn not installed")
 class MLTests(unittest.TestCase):
+    # Group: train the model once for the whole class so every test reuses the same saved file.
     @classmethod
     def setUpClass(cls):
         from ml.train import train
@@ -25,16 +27,19 @@ class MLTests(unittest.TestCase):
         cls.model_path = Path(cls.tmp.name) / "model.joblib"
         cls.metrics = train(model_path=cls.model_path, verbose=False)
 
+    # Group: remove the temporary model file once all tests in the class are done.
     @classmethod
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
+    # Training wrote a model file, and its metrics are the four expected scores between 0 and 1.
     def test_training_saves_model_and_reports_metrics(self):
         self.assertTrue(self.model_path.exists())
         self.assertEqual(set(self.metrics), {"accuracy", "precision", "recall", "f1"})
         for value in self.metrics.values():
             self.assertTrue(0.0 <= value <= 1.0)
 
+    # Input: two chunks of code (one risky, one plain) each get a probability between 0 and 1.
     def test_scoring_returns_probabilities_for_every_chunk(self):
         from ml.predict import score_inputs
         code = from_text('a = 1\nb = 2\nos.system("ping " + host)\n\nx = 1 + 2\ny = x * 3\nz = y - 1',
@@ -44,6 +49,7 @@ class MLTests(unittest.TestCase):
         for p in predictions:
             self.assertTrue(0.0 <= p.probability <= 1.0)
 
+    # Input: an unsafe gets() call should score higher than the safe fgets() version.
     def test_training_seen_examples_rank_in_the_right_order(self):
         from ml.predict import score_inputs
         bad = from_text("gets(name);", language="c")
@@ -52,11 +58,13 @@ class MLTests(unittest.TestCase):
         good_p = score_inputs([good], model_path=self.model_path)[0].probability
         self.assertGreater(bad_p, good_p)
 
+    # Loading a model path that does not exist raises FileNotFoundError rather than failing silently.
     def test_missing_model_gives_helpful_error(self):
         from ml.model import load_model
         with self.assertRaises(FileNotFoundError):
             load_model(Path(self.tmp.name) / "nope.joblib")
 
+    # Setup writes a small CSV; assertions check labels map to 0/1, then an unknown label must raise ValueError.
     def test_csv_dataset_loading_and_label_validation(self):
         from ml.train import load_dataset
         path = Path(self.tmp.name) / "d.csv"
