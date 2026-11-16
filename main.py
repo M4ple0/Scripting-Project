@@ -144,7 +144,15 @@ def cmd_train(args) -> int:
         print(f"error: {exc}. Install the ML dependency with: pip install -r requirements.txt",
               file=sys.stderr)
         return 2
-    train(dataset=args.dataset, folds=args.folds)
+    try:
+        train(dataset=args.dataset, folds=args.folds)
+    except FileNotFoundError as exc:
+        # Only blame the dataset when the file that went missing really is the dataset.
+        if args.dataset is not None and exc.filename == args.dataset:
+            print(f"error: dataset file not found: {args.dataset}", file=sys.stderr)
+        else:
+            print(f"error: missing file: {exc.filename or exc}", file=sys.stderr)
+        return 2
     return 0
 
 
