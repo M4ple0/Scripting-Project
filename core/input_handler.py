@@ -175,7 +175,12 @@ def read_stdin(result: LoadResult, language: str | None = None) -> None:
     if sys.stdin.isatty():
         print("Reading code from standard input... finish with Ctrl-D.", file=sys.stderr)
     # Read everything piped in at once, then normalize it.
-    text = normalise_text(sys.stdin.read())
+    try:
+        raw_text = sys.stdin.read()
+    except UnicodeDecodeError:
+        result.warnings.append("<stdin>: could not decode input as text")
+        return
+    text = normalise_text(raw_text)
     # Warn when stdin produced no code at all.
     if not text.strip():
         result.warnings.append("<stdin>: nothing was received")
