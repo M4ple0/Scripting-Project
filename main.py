@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import sys
 
@@ -28,10 +29,13 @@ def add_input_args(parser: argparse.ArgumentParser) -> None:
 
 def kilobytes_to_bytes(text):
     try:
-        kilobytes = float(text)
+        limit = float(text) * 1024
     except ValueError:
         return None
-    return int(kilobytes * 1024)
+    # NaN, inf and values whose byte total overflows float cannot become an int
+    if not math.isfinite(limit):
+        return None
+    return int(limit)
 
 
 def python_version_text() -> str:
