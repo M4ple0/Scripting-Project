@@ -148,45 +148,6 @@ def cmd_rules(args) -> int:
     return 0
 
 
-def cmd_train(args) -> int:
-    # ML imports deferred so the rules/read commands work without scikit-learn installed
-    try:
-        from ml.train import train
-    except ImportError as exc:
-        print(f"error: {exc}. Install the ML dependency with: pip install -r requirements.txt",
-              file=sys.stderr)
-        return 2
-    try:
-        train(dataset=args.dataset, folds=args.folds)
-    except FileNotFoundError as exc:
-        # Only blame the dataset when the file that went missing really is the dataset.
-        if args.dataset is not None and exc.filename == args.dataset:
-            print(f"error: dataset file not found: {args.dataset}", file=sys.stderr)
-        else:
-            print(f"error: missing file: {exc.filename or exc}", file=sys.stderr)
-        return 2
-    return 0
-
-
-def cmd_predict(args) -> int:
-    try:
-        from ml.predict import format_predictions, score_inputs
-    except ImportError as exc:
-        print(f"error: {exc}. Install the ML dependency with: pip install -r requirements.txt",
-              file=sys.stderr)
-        return 2
-    inputs = gather(args)
-    if inputs is None:
-        return 2
-    try:
-        predictions = score_inputs(inputs)
-    except FileNotFoundError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    print(format_predictions(predictions, args.threshold, show_all=args.show_all))
-    return 0
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="main.py", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -213,20 +174,6 @@ def build_parser() -> argparse.ArgumentParser:
     rules.add_argument("--no-color", action="store_true")
     rules.add_argument("--output", metavar="FILE", help="write the report to a file instead of the screen")
     rules.set_defaults(func=cmd_rules)
-
-    train = sub.add_parser("train", help="step 3: train the ML model")
-    train.add_argument("--dataset", help="CSV with columns code,label (1 = insecure, 0 = secure); "
-                                         "default is the built-in starter set")
-    train.add_argument("--folds", type=int, default=5, help="cross-validation folds")
-    train.set_defaults(func=cmd_train)
-
-    predict = sub.add_parser("predict", help="step 3: score code with the trained ML model")
-    add_input_args(predict)
-    predict.add_argument("--threshold", type=probability, default=0.5,
-                         help="flag chunks whose insecure-probability is at least this "
-                              "(0 to 1, default 0.5)")
-    predict.add_argument("--show-all", action="store_true", help="also list chunks below the threshold")
-    predict.set_defaults(func=cmd_predict)
     return parser
 
 
