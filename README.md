@@ -27,14 +27,12 @@ python main.py predict samples/vulnerable_app.py --show-all
 cat file.py | python main.py rules -   # stdin
 python main.py rules --paste           # type/paste code, finish with a line saying END
 
-python -m unittest discover -s tests -t .
 ```
 
 Useful flags: `--language` (force the language), `--fail-on high` (exit status 1 if something at
 or above that severity is found - handy for CI), `--format json`, `--output report.txt` (write the
 report to a file), `--max-kb 500` (skip larger files; the default can also be set with the
-`SECREVIEW_MAX_BYTES` environment variable). Before the command, `--version` shows the version and
-Python version and `--verbose` prints the environment (Python, platform, working directory).
+`SECREVIEW_MAX_BYTES` environment variable). `--version` shows the version and Python version.
 
 Every text report ends with a **risk score** (findings weighted by severity: info 0, low 1,
 medium 3, high 7, critical 10) and the average per input.
@@ -61,10 +59,9 @@ rules/
                         (input(), sys.argv, os.environ, Flask request data, route parameters) into
                         dangerous calls (shell, eval, SQL, file paths, pickle/yaml, URLs, templates)
 ml/
-  seed_data.py          starter dataset (120 hand-written snippets) + augmentation
-  train.py, predict.py, model.py
+seed_data.py          starter dataset (120 hand-written snippets) + augmentation
+train.py, predict.py, model.py
 samples/                deliberately vulnerable demo files and one safe file
-tests/                  unittest suite
 ```
 
 ### How the AST analysis works
