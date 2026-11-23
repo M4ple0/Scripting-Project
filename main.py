@@ -38,6 +38,18 @@ def kilobytes_to_bytes(text):
     return int(limit)
 
 
+def probability(text):
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a number")
+    # NaN, inf and anything outside the inclusive 0..1 range is not a probability
+    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+        raise argparse.ArgumentTypeError(
+            f"{text!r} is not a probability in the inclusive range 0 to 1")
+    return value
+
+
 def python_version_text() -> str:
     return ".".join(str(part) for part in sys.version_info[:3])
 
@@ -210,8 +222,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     predict = sub.add_parser("predict", help="step 3: score code with the trained ML model")
     add_input_args(predict)
-    predict.add_argument("--threshold", type=float, default=0.5,
-                         help="flag chunks whose insecure-probability is at least this (default 0.5)")
+    predict.add_argument("--threshold", type=probability, default=0.5,
+                         help="flag chunks whose insecure-probability is at least this "
+                              "(0 to 1, default 0.5)")
     predict.add_argument("--show-all", action="store_true", help="also list chunks below the threshold")
     predict.set_defaults(func=cmd_predict)
     return parser
