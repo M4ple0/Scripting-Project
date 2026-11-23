@@ -1,40 +1,32 @@
 # Secure Code Review - Phase 2 prototype
 
-A local code-security checker that combines **rule-based analysis** with a **machine-learning
-model** and uses no LLM, so nothing you scan leaves your machine and there is nothing to hallucinate.
+A local code-security checker that combines rule-based and AST analysis with no external services,
+so nothing you scan leaves your machine.
 
-Phase 2 delivers three components that work **separately**. Combining them (and the TUI) is Phase 3.
+The command-line scanner reads source files, runs security rules, and produces text or JSON reports.
 
 | Step | Command | What it does |
 |------|---------|--------------|
 | 1. Input | `python main.py read <paths>` | Takes files, folders, stdin or pasted code and shows how it was parsed |
 | 2. Rules | `python main.py rules <paths>` | Runs the small rule scripts and reports findings with line, CWE, risk and fix |
-| 3. ML | `python main.py train` / `predict <paths>` | Trains a classifier on a dataset and scores chunks of code |
 
 ## Quick start
 
 ```bash
-pip install -r requirements.txt        # only the ML step needs this (scikit-learn)
-
 python main.py read samples --chunks
 python main.py rules samples/vulnerable_app.py
 python main.py rules samples --min-severity high --format json
 python main.py rules --list-rules
 
-python main.py train
-python main.py predict samples/vulnerable_app.py --show-all
-
 cat file.py | python main.py rules -   # stdin
 python main.py rules --paste           # type/paste code, finish with a line saying END
 
-python -m unittest discover -s tests -t .
 ```
 
 Useful flags: `--language` (force the language), `--fail-on high` (exit status 1 if something at
 or above that severity is found - handy for CI), `--format json`, `--output report.txt` (write the
 report to a file), `--max-kb 500` (skip larger files; the default can also be set with the
-`SECREVIEW_MAX_BYTES` environment variable). Before the command, `--version` shows the version and
-Python version and `--verbose` prints the environment (Python, platform, working directory).
+`SECREVIEW_MAX_BYTES` environment variable). `--version` shows the version and Python version.
 
 Every text report ends with a **risk score** (findings weighted by severity: info 0, low 1,
 medium 3, high 7, critical 10) and the average per input.
@@ -45,7 +37,7 @@ medium 3, high 7, critical 10) and the average per input.
 main.py                 command line entry point
 core/
   input_handler.py      step 1: files / folders / stdin / paste, language detection, warnings
-  chunker.py            splits code into snippet-sized pieces for the ML model
+  chunker.py            splits code into review-sized chunks
   models.py, report.py  shared data types, text and JSON output
 rules/
   engine.py             finds every rule script automatically and runs it
@@ -60,11 +52,7 @@ rules/
   ast_analysis.py       Python only: parses the code into a syntax tree and follows untrusted input
                         (input(), sys.argv, os.environ, Flask request data, route parameters) into
                         dangerous calls (shell, eval, SQL, file paths, pickle/yaml, URLs, templates)
-ml/
-  seed_data.py          starter dataset (120 hand-written snippets) + augmentation
-  train.py, predict.py, model.py
 samples/                deliberately vulnerable demo files and one safe file
-tests/                  unittest suite
 ```
 
 ### How the AST analysis works
@@ -103,23 +91,9 @@ versions against a vulnerability database such as OSV - which is a good Phase 3 
   expect some false positives and misses; this is a first layer, not a verdict.
 * The AST analysis is Python only, works one file at a time, ignores values stored on `self`,
   and treats ordinary function parameters as trusted (only route parameters count as untrusted).
-* **The ML model is a pipeline demo, not a trustworthy detector yet.** It is trained on ~120 short
-  snippets (about 330 after renaming variables). Cross-validation that keeps copies of the same snippet
-  together scores around chance (accuracy ~0.5), meaning it does not yet generalise to code constructs it has
-  not seen. It does separate the bundled vulnerable and safe samples, but those resemble its training data.
-  Its value in Phase 2 is that the whole train -> save -> predict path works and is ready for real data.
 * Chunks are cut at blank lines, which suits short snippets better than long functions.
-
-## Next step for the ML component: real data
-
-`python main.py train --dataset your.csv` accepts a CSV with columns `code,label` (label `1`/`insecure`
-or `0`/`secure`); `python -m ml.seed_data` writes `ml/data/seed_dataset.csv` as a format example.
-Candidate sources to research: the Juliet test suite and SARD (NIST), Devign, CVEfixes, Big-Vul, and the
-vulnerable/fixed pairs in real CVE patches. When you add data, split train/test **by project or
-commit**, not randomly - near-duplicate code in both halves makes the scores look better than they are.
-Check each dataset's licence.
 
 ## Phase 3 ideas
 
-Combine rules + ML into one scan with a single report, Textual dashboard, dependency/CVE lookup,
+Combine the rule and AST engines into a Textual dashboard, add dependency/CVE lookup,
 configurable policy files for internal security standards, and more languages.

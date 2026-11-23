@@ -54,29 +54,66 @@ def python_version_text() -> str:
     return ".".join(str(part) for part in sys.version_info[:3])
 
 
-def describe_environment() -> None:
-    print(f"python {python_version_text()} on {sys.platform}", file=sys.stderr)
-    print(f"working directory: {os.getcwd()}", file=sys.stderr)
-    print(f"arguments: {' '.join(sys.argv[1:])}", file=sys.stderr)
-    print(f"file size limit: {MAX_FILE_BYTES:,} bytes", file=sys.stderr)
+def output_matches_input(output_path, inputs) -> bool:
+    """Check whether the output file is one of the files being analysed."""
+
+    output_path = os.path.realpath(os.path.abspath(output_path))
+
+    for code in inputs:
+        # Ignore stdin and pasted snippets, which aren't filesystem paths.
+        if code.name.startswith("<") and code.name.endswith(">"):
+            continue
+
+        input_path = os.path.realpath(os.path.abspath(code.name))
+
+        # Check whether both paths refer to the same underlying file.
+        try:
+            if os.path.samefile(output_path, input_path):
+                return True
+        except OSError:
+            # Fall back to normalized path comparison.
+            if os.path.normcase(output_path) == os.path.normcase(input_path):
+                return True
+
+    return False
 
 
-def emit(text: str, path=None) -> bool:
+
+def emit(text: str, path=None, inputs=None) -> bool:
     if not path:
         print(text)
         return True
+
+    # Prevent overwriting source files.
+    if inputs and output_matches_input(path, inputs):
+        print(
+            f"error: output file '{path}' is also an input file. "
+            "Choose a different output path.",
+            file=sys.stderr
+        )
+        return False
+
     folder = os.path.dirname(os.path.abspath(path))
+
     if not os.path.isdir(folder):
         print(f"error: the folder {folder} does not exist", file=sys.stderr)
         return False
+
     try:
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(text + "\n")
+
     except OSError as exc:
         print(f"error: cannot write {path} ({exc.strerror or exc})", file=sys.stderr)
         return False
-    print(f"report written to {path} ({os.path.getsize(path):,} bytes)", file=sys.stderr)
+
+    print(
+        f"report written to {path} ({os.path.getsize(path):,} bytes)",
+        file=sys.stderr
+    )
+
     return True
+
 
 
 def gather(args):
@@ -141,7 +178,7 @@ def cmd_rules(args) -> int:
     else:
         use_color = sys.stdout.isatty() and not args.no_color and not args.output
         report = format_text(findings, len(inputs), color=use_color)
-    if not emit(report, args.output):
+    if not emit(report, args.output, inputs):
         return 2
     if args.fail_on and any(SEVERITY_RANK[f.severity] >= SEVERITY_RANK[args.fail_on] for f in findings):
         return 1
@@ -153,8 +190,6 @@ def build_parser() -> argparse.ArgumentParser:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--version", action="version",
                         version=f"%(prog)s {VERSION} (python {python_version_text()})")
-    parser.add_argument("--verbose", action="store_true",
-                        help="print environment details to stderr (give this before the command)")
     sub = parser.add_subparsers(dest="command", required=True)
     # each subparser stores its handler in args.func; main() dispatches on it
 
@@ -184,8 +219,6 @@ def main(argv=None) -> int:
               file=sys.stderr)
         return 2
     args = build_parser().parse_args(argv)
-    if args.verbose:
-        describe_environment()
     return args.func(args)
 
 
