@@ -15,7 +15,7 @@ _NOT_RULE_SCRIPTS = {"base", "engine"}
 
 # Module discovery: import every rule script once and cache the result.
 @lru_cache(maxsize=None)
-def load_rule_modules() -> tuple:
+def load_rules() -> tuple:
     """Import every rule script in this package and check it follows the contract."""
     modules = []
     # Scan the directory holding this file for importable rule scripts.
@@ -50,7 +50,7 @@ def analyze(code: CodeInput, modules=None) -> list[Finding]:
     """Run all rule scripts on one input and return its findings, ordered by line."""
     findings: list[Finding] = []
     # Run each rule script in turn, falling back to warnings if one breaks.
-    for module in modules or load_rule_modules():
+    for module in modules or load_rules():
         try:
             findings.extend(module.check(code))
         except Exception as exc:  # a broken rule script must not stop the whole scan
@@ -74,7 +74,7 @@ def analyze_many(inputs: list[CodeInput]) -> list[Finding]:
 def list_rules() -> list[tuple]:
     """(script name, description, Rule) for every rule, for ``--list-rules``."""
     rows = []
-    for module in load_rule_modules():
+    for module in load_rules():
         for rule in module.RULES:
             rows.append((module.NAME, module.DESCRIPTION, rule))
     return rows
