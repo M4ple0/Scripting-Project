@@ -4,7 +4,43 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
-from main import kilobytes_to_bytes, main
+from main import build_parser, kilobytes_to_bytes, main
+
+
+class ThresholdValidationTests(unittest.TestCase):
+    # Input: non-finite thresholds must be rejected by argparse with a clear error.
+    def test_rejects_nonfinite_thresholds(self):
+        for text in ("nan", "NaN", "-nan", "inf", "-inf", "Infinity", "1e400"):
+            err = io.StringIO()
+            with redirect_stderr(err):
+                with self.assertRaises(SystemExit) as ctx:
+                    main(["predict", "--threshold", text])
+            self.assertEqual(ctx.exception.code, 2, text)
+            self.assertIn("error:", err.getvalue(), text)
+            self.assertIn("--threshold", err.getvalue(), text)
+            self.assertNotIn("Traceback", err.getvalue(), text)
+
+    # Input: values outside the inclusive 0..1 range are rejected the same way.
+    def test_rejects_out_of_range_thresholds(self):
+        for text in ("-0.1", "1.5", "100", "-1"):
+            err = io.StringIO()
+            with redirect_stderr(err):
+                with self.assertRaises(SystemExit) as ctx:
+                    main(["predict", "--threshold", text])
+            self.assertEqual(ctx.exception.code, 2, text)
+            self.assertIn("error:", err.getvalue(), text)
+            self.assertIn("--threshold", err.getvalue(), text)
+            self.assertNotIn("Traceback", err.getvalue(), text)
+
+    # Input: 0 and 1 are inclusive bounds and must still parse.
+    def test_accepts_inclusive_bounds(self):
+        parser = build_parser()
+        self.assertEqual(parser.parse_args(["predict", "--threshold", "0"]).threshold, 0.0)
+        self.assertEqual(parser.parse_args(["predict", "--threshold", "1"]).threshold, 1.0)
+
+    # Input: the threshold keeps its previous default when the flag is omitted.
+    def test_default_threshold_is_unchanged(self):
+        self.assertEqual(build_parser().parse_args(["predict"]).threshold, 0.5)
 
 
 class MaxKbTests(unittest.TestCase):
