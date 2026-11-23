@@ -152,6 +152,8 @@ def cmd_read(args) -> int:
     print(f"\n{len(inputs)} input(s) ready for analysis.")
     return 0
 
+def meets_severity(severity, minimum):
+    return SEVERITY_RANK[severity] >= SEVERITY_RANK[minimum]
 
 def cmd_rules(args) -> int:
     from rules.engine import analyze_many, list_rules
@@ -171,8 +173,10 @@ def cmd_rules(args) -> int:
         return 2
     # --min-severity filters the findings first; --fail-on is checked afterwards
     # against only the findings that survived that filter
-    findings = [f for f in analyze_many(inputs)
-                if SEVERITY_RANK[f.severity] >= SEVERITY_RANK[args.min_severity]]
+findings = [
+    f for f in analyze_many(inputs)
+    if meets_severity(f.severity, args.min_severity)
+]
     if args.format == "json":
         report = format_json(findings, len(inputs))
     else:
@@ -180,8 +184,10 @@ def cmd_rules(args) -> int:
         report = format_text(findings, len(inputs), color=use_color)
     if not emit(report, args.output, inputs):
         return 2
-    if args.fail_on and any(SEVERITY_RANK[f.severity] >= SEVERITY_RANK[args.fail_on] for f in findings):
-        return 1
+if args.fail_on and any(
+    meets_severity(f.severity, args.fail_on) for f in findings
+):
+    return 1
     return 0
 
 
