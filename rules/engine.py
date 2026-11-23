@@ -50,7 +50,7 @@ def analyze(code: CodeInput, modules=None) -> list[Finding]:
     """Run all rule scripts on one input and return its findings, ordered by line."""
     findings: list[Finding] = []
     # Run each rule script in turn, falling back to warnings if one breaks.
-    for module in modules or load_rule_modules():
+    for module in load_rule_modules() if modules is None else modules:
         try:
             findings.extend(module.check(code))
         except Exception as exc:  # a broken rule script must not stop the whole scan

@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 
 from core.input_handler import from_text, load_inputs
+from core.models import Finding
 from rules.engine import analyze, list_rules, load_rule_modules
 
 SAMPLES = Path(__file__).resolve().parent.parent / "samples"
@@ -90,6 +91,36 @@ class RuleTests(unittest.TestCase):
         for name in ("vulnerable.js", "vulnerable.c", "vulnerable.php"):
             self.assertGreaterEqual(len(analyze(load_inputs([SAMPLES / name]).inputs[0])), 5, name)
         self.assertEqual(analyze(load_inputs([SAMPLES / "safe_app.py"]).inputs[0]), [])
+
+    # modules=None (or the default) runs the discovered rule scripts.
+    def test_default_modules_run_discovered_rules(self):
+        code = from_text('cursor.execute(f"SELECT * FROM u WHERE id = {uid}")', language="python")
+        self.assertIn("SQL001", {f.rule_id for f in analyze(code, modules=None)})
+        self.assertEqual(analyze(code, modules=None), analyze(code))
+
+    # An explicitly empty list must run no rules at all.
+    def test_explicit_empty_module_list_runs_no_rules(self):
+        code = from_text('cursor.execute(f"SELECT * FROM u WHERE id = {uid}")', language="python")
+        self.assertEqual(analyze(code, modules=[]), [])
+
+    # An explicitly empty tuple must also run no rules at all.
+    def test_explicit_empty_module_tuple_runs_no_rules(self):
+        code = from_text('os.system("ping " + host)', language="python")
+        self.assertEqual(analyze(code, modules=()), [])
+
+    # An explicit nonempty module list runs exactly those modules, not the defaults.
+    def test_explicit_nonempty_modules_run_only_those_modules(self):
+        class OnlyRule:
+            __name__ = "only_rule"
+
+            @staticmethod
+            def check(code):
+                return [Finding(rule_id="ONLY001", title="only", severity="info",
+                                file=code.name, line=1, snippet="", message="m", recommendation="r")]
+
+        code = from_text('cursor.execute(f"SELECT * FROM u WHERE id = {uid}")', language="python")
+        findings = analyze(code, modules=[OnlyRule])
+        self.assertEqual([f.rule_id for f in findings], ["ONLY001"])
 
 
 if __name__ == "__main__":
