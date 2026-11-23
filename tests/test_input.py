@@ -1,5 +1,6 @@
 import builtins
 import io
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -34,6 +35,30 @@ class InputTests(unittest.TestCase):
         (self.root / "node_modules" / "lib.js").write_text("let b = 2;\n")
         names = [Path(i.name).name for i in load_inputs([self.root]).inputs]
         self.assertEqual(names, ["keep.js"])
+
+    # Input: os.walk cannot list one subdirectory, but a readable sibling still loads and
+    # the failure is reported as a warning carrying both the path and the error text.
+    def test_walk_traversal_error_becomes_warning_and_readable_files_still_load(self):
+        (self.root / "good.py").write_text("x = 1\n")
+        locked = self.root / "locked"
+        locked.mkdir()
+        (locked / "hidden.py").write_text("y = 2\n")
+        # Make scandir fail only for the locked folder; os.walk then calls its onerror hook.
+        real_scandir = os.scandir
+
+        def failing_scandir(path):
+            if str(path) == str(locked):
+                raise PermissionError(13, "Permission denied", str(path))
+            return real_scandir(path)
+
+        with mock.patch("os.scandir", new=failing_scandir):
+            result = load_inputs([self.root])
+        names = [Path(i.name).name for i in result.inputs]
+        self.assertEqual(names, ["good.py"])
+        self.assertEqual(len(result.warnings), 1)
+        warning = result.warnings[0]
+        self.assertIn(str(locked), warning)
+        self.assertIn("Permission denied", warning)
 
     # Input: a binary file, a whitespace-only file and a missing file all become warnings instead of crashing.
     def test_problem_files_become_warnings_not_crashes(self):
