@@ -155,8 +155,14 @@ def walk_directory(root, result: LoadResult, language: str | None = None,
                    max_bytes: int | None = None) -> None:
     """Read every supported source file below ``root`` (sorted, so output is stable)."""
     found = 0
+
+    # os.walk drops listing errors unless given an onerror hook; surface them as warnings.
+    def record_walk_error(exc: OSError) -> None:
+        path = exc.filename or root
+        result.warnings.append(f"{path}: cannot list directory ({exc.strerror or exc})")
+
     # Walk the tree, skipping dependency, cache, and hidden directories.
-    for current, dirs, files in os.walk(root):
+    for current, dirs, files in os.walk(root, onerror=record_walk_error):
         # prune skipped/dotted dirs in place so os.walk never descends into them
         dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and not d.startswith("."))
         for name in sorted(files):
